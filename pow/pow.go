@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/big"
 
+	"../tx"
 	"../utils"
 )
 
@@ -14,14 +15,15 @@ var (
 	maxNonce = math.MaxInt64
 )
 
-const targetBits = 24
+const targetBits = 8
 
 type IBlock interface {
 	GetTimestamp() int64
-	GetData() []byte
+	GetTransactions() []*tx.Transaction
 	GetPrevBlockHash() []byte
 	GetHash() []byte
 	GetNonce() int
+	HashTransactions() []byte
 }
 
 type ProofOfWork struct {
@@ -29,19 +31,11 @@ type ProofOfWork struct {
 	target *big.Int
 }
 
-func NewProofOfWork(b IBlock) *ProofOfWork {
-	target := big.NewInt(1)
-	target.Lsh(target, uint(256-targetBits))
-
-	pow := &ProofOfWork{block: b, target: target}
-	return pow
-}
-
 func (pow *ProofOfWork) prepareData(nonce int) []byte {
 	data := bytes.Join(
 		[][]byte{
 			pow.block.GetPrevBlockHash(),
-			pow.block.GetData(),
+			pow.block.HashTransactions(),
 			utils.IntToHex(pow.block.GetTimestamp()),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(int64(nonce)),
@@ -56,7 +50,7 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	var hash [32]byte
 	nonce := 0
 
-	fmt.Printf("Mining the block containing \"%s\"\n", pow.block.GetData())
+	fmt.Println("Mining a new block")
 
 	for nonce < maxNonce {
 		data := pow.prepareData(nonce)
@@ -85,4 +79,12 @@ func (pow *ProofOfWork) Validate() bool {
 
 	isValid := hashInt.Cmp(pow.target) == -1
 	return isValid
+}
+
+func NewProofOfWork(b IBlock) *ProofOfWork {
+	target := big.NewInt(1)
+	target.Lsh(target, uint(256-targetBits))
+
+	pow := &ProofOfWork{block: b, target: target}
+	return pow
 }
