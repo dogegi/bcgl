@@ -7,6 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+
+	"../utils"
+	"../wallet"
 )
 
 const subsidy = 10
@@ -24,12 +27,13 @@ type Transaction struct {
 type TXInput struct {
 	Txid      []byte
 	VoutIdx   int
-	ScriptSig string
+	Signature []byte
+	PubKey    []byte
 }
 
 type TXOutput struct {
-	Value        int
-	ScriptPubkey string
+	Value      int
+	PubKeyHash []byte
 }
 
 func (tx *Transaction) setID() {
@@ -50,12 +54,29 @@ func (tx *Transaction) IsCoinbase() bool {
 	return len(tx.Vins) == 1 && len(tx.Vins[0].Txid) == 0 && tx.Vins[0].VoutIdx == -1
 }
 
-func (txo *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
-	return (txo.ScriptPubkey == unlockingData)
+func (txi *TXInput) CanUnlockOutputWith(unlockingData string) bool {
+	//return (txi.ScriptSig == unlockingData)
+	return true
 }
 
-func (txi *TXInput) CanUnlockOutputWith(unlockingData string) bool {
-	return (txi.ScriptSig == unlockingData)
+func (txi *TXInput) UsesKey(pubKeyHash []byte) bool {
+	lockingHash := wallet.HashPubKey(txi.PubKey)
+	return bytes.Compare(lockingHash, pubKeyHash) == 0
+}
+
+func (txo *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
+	//return (txo.ScriptPubkey == unlockingData)
+	return true
+}
+
+func (txo *TXOutput) Lock(address []byte) {
+	pubKeyHash := utils.Base58Decode(address)
+	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+	txo.PubKeyHash = pubKeyHash
+}
+
+func (txo *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
+	return bytes.Compare(txo.PubKeyHash, pubKeyHash) == 0
 }
 
 func NewConinbaseTx(to, data string) *Transaction {
@@ -63,8 +84,8 @@ func NewConinbaseTx(to, data string) *Transaction {
 		data = fmt.Sprintf("Reward to '%s'", to)
 	}
 
-	txin := TXInput{[]byte{}, -1, data}
-	txout := TXOutput{subsidy, to}
+	txin := TXInput{[]byte{}, -1, []byte{}, []byte{}}
+	txout := TXOutput{subsidy, []byte{}}
 	tx := Transaction{[]byte{}, []TXInput{txin}, []TXOutput{txout}}
 	tx.setID()
 
@@ -87,13 +108,13 @@ func NewUTXOTransaction(from, to string, amount int, bc IBlockChain) *Transactio
 		}
 
 		for _, out := range outs {
-			inputs = append(inputs, TXInput{txID, out, from})
+			inputs = append(inputs, TXInput{txID, out, []byte{}, []byte{}})
 		}
 	}
 
-	outputs = append(outputs, TXOutput{amount, to})
+	outputs = append(outputs, TXOutput{amount, []byte{}})
 	if acc > amount {
-		outputs = append(outputs, TXOutput{acc - amount, from})
+		outputs = append(outputs, TXOutput{acc - amount, []byte{}})
 	}
 
 	tx := Transaction{[]byte{}, inputs, outputs}
